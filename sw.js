@@ -1,7 +1,7 @@
 // Permite usar la app sin conexión.
 // Estrategia: abre al instante con la copia guardada y, si hay conexión, descarga la versión
 // más reciente en segundo plano (se verá la próxima vez que abras la app).
-const VERSION = 'registro-v3';
+const VERSION = 'registro-v4';
 const FILES = [
   './', './index.html', './styles.css', './app.js', './pdf.js', './exercises.js',
   './vendor/jspdf.umd.min.js', './manifest.webmanifest',

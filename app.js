@@ -237,7 +237,7 @@ function renderSection(rec, sid, sec) {
     guide, list);
 
   const drawItems = () => {
-    list.replaceChildren(...items.map((it, i) => renderItem(sec, items, it, i, { onChange: updateBadge, redraw: drawItems })));
+    list.replaceChildren(...items.map((it, i) => renderItem(sid, sec, items, it, i, { onChange: updateBadge, redraw: drawItems })));
     list.querySelectorAll('textarea').forEach(autoGrow);
     updateBadge();
   };
@@ -255,7 +255,61 @@ function renderSection(rec, sid, sec) {
   return card;
 }
 
-function renderItem(sec, items, it, i, { onChange, redraw }) {
+/* ---------- Opciones propias en etiquetas/emociones («+ Otra») ----------
+   Se guardan en meta.customOptions = { 'rumiacion.etiqueta': ['…'], … } y aparecen
+   como una opción más en los registros siguientes. Quitarlas no borra nada ya escrito. */
+let customOpts = {};
+const sameText = (a, b) => norm(a.trim()) === norm(b.trim());
+async function saveCustomOpts() { await DB.put('meta', customOpts, 'customOptions'); }
+
+function renderChips(key, f, val, onSet) {
+  const sel = Array.isArray(val) ? val.slice() : [];
+  const row = h('div', { class: 'chips', role: 'group', 'aria-label': f.label });
+  const options = () => {
+    const out = [...f.options, ...(customOpts[key] || [])];
+    for (const v of sel) if (!out.some((o) => sameText(o, v))) out.push(v); // usadas aquí aunque ya no estén en la lista
+    return out;
+  };
+  const commit = () => { const all = options(); onSet(all.filter((o) => sel.includes(o))); };
+
+  const draw = () => {
+    row.replaceChildren(...options().map((opt) => {
+      const on = sel.includes(opt);
+      return h('button', { type: 'button', class: on ? 'on' : '', 'aria-pressed': String(on), onclick: () => {
+        const ix = sel.indexOf(opt);
+        ix >= 0 ? sel.splice(ix, 1) : sel.push(opt);
+        commit(); draw();
+      } }, opt);
+    }), h('button', { type: 'button', class: 'other', onclick: openInput }, '+ Otra'));
+  };
+
+  const openInput = () => {
+    const inp = h('input', { type: 'text', class: 'chip-input', placeholder: 'Escribe y pulsa Añadir', 'aria-label': 'Otra opción', maxlength: 40 });
+    const add = async () => {
+      let txt = inp.value.trim().replace(/\s+/g, ' ');
+      if (!txt) { draw(); return; }
+      txt = txt.charAt(0).toUpperCase() + txt.slice(1);
+      const existing = options().find((o) => sameText(o, txt));
+      if (existing) txt = existing;
+      else {
+        customOpts[key] = [...(customOpts[key] || []), txt];
+        await saveCustomOpts();
+      }
+      if (!sel.includes(txt)) sel.push(txt);
+      commit(); draw();
+    };
+    inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } if (e.key === 'Escape') draw(); });
+    row.lastElementChild.replaceWith(h('span', { class: 'chip-add' }, inp,
+      h('button', { type: 'button', class: 'on', onclick: add }, 'Añadir'),
+      h('button', { type: 'button', 'aria-label': 'Cancelar', onclick: draw }, '×')));
+    inp.focus();
+  };
+
+  draw();
+  return row;
+}
+
+function renderItem(sid, sec, items, it, i, { onChange, redraw }) {
   const wrap = h('div', { class: 'item' });
   const canRemove = sec.kind === 'repeat' && items.length > Math.max(1, sec.min || 0);
   if (sec.itemLabel) {
@@ -311,17 +365,7 @@ function renderItem(sec, items, it, i, { onChange, redraw }) {
       }
       field.append(row, h('div', { class: 'scale-legend' }, h('span', null, 'Nada'), h('span', null, 'Máxima')));
     } else if (f.type === 'chips') {
-      const sel = new Set(Array.isArray(val) ? val : []);
-      const row = h('div', { class: 'chips', role: 'group', 'aria-label': f.label });
-      for (const opt of f.options) {
-        const btn = h('button', { type: 'button', class: sel.has(opt) ? 'on' : '', 'aria-pressed': String(sel.has(opt)), onclick: () => {
-          sel.has(opt) ? sel.delete(opt) : sel.add(opt);
-          btn.classList.toggle('on', sel.has(opt)); btn.setAttribute('aria-pressed', String(sel.has(opt)));
-          set(f.id, f.options.filter((o) => sel.has(o)));
-        } }, opt);
-        row.append(btn);
-      }
-      field.append(row);
+      field.append(renderChips(`${sid}.${f.id}`, f, val, (v) => set(f.id, v)));
     }
     wrap.append(field);
   }
@@ -543,7 +587,7 @@ async function refreshBackupState() {
 async function exportBackup() {
   await flushSave();
   const days = await DB.all('days');
-  const payload = { app: 'registro-diario', format: 1, exportedAt: new Date().toISOString(), days };
+  const payload = { app: 'registro-diario', format: 1, exportedAt: new Date().toISOString(), days, customOptions: customOpts };
   const blob = new Blob([JSON.stringify(payload, null, 1)], { type: 'application/json' });
   const ok = await deliverFile(blob, `registro-diario-copia-${todayKey()}.json`);
   if (ok) {
@@ -565,6 +609,15 @@ async function importBackup(file) {
     if (!existing) { await DB.put('days', d); added++; }
     else if ((d.updatedAt || 0) > (existing.updatedAt || 0)) { await DB.put('days', d); updated++; }
     else kept++;
+  }
+  if (payload.customOptions && typeof payload.customOptions === 'object') {
+    for (const [key, list] of Object.entries(payload.customOptions)) {
+      if (!Array.isArray(list)) continue;
+      const cur = customOpts[key] || [];
+      for (const o of list) if (typeof o === 'string' && o.trim() && !cur.some((c) => sameText(c, o))) cur.push(o.trim());
+      customOpts[key] = cur;
+    }
+    await saveCustomOpts();
   }
   await refreshBackupState();
   toast(`Importado: ${added} nuevos, ${updated} actualizados, ${kept} sin cambios`);
@@ -665,7 +718,24 @@ async function renderSettings() {
     h('p', null, 'Es una herramienta de apoyo a la terapia, no la sustituye. Si algún día notas que todo pesa demasiado, contacta con tu psicólogo/a sin esperar a la siguiente sesión.'),
     h('p', null, 'Ningún dato sale de tu dispositivo: no hay servidor ni cuenta.'));
 
-  view.replaceChildren(h('h1', { class: 'page-title' }, 'Ajustes'), backupCard, pinCard, installCard, aboutCard);
+  const tplNow = TEMPLATES[CURRENT_VERSION];
+  const optGroups = Object.entries(customOpts).filter(([, list]) => list && list.length);
+  const optsCard = h('div', { class: 'card set-card' },
+    h('h3', null, '🏷️ Mis opciones'),
+    h('p', null, 'Las que has añadido con «+ Otra» en etiquetas y emociones. Quitarlas de aquí no borra nada de lo que ya escribiste.'),
+    optGroups.length ? optGroups.map(([key, list]) => {
+      const [sid, fid] = key.split('.');
+      const sec = tplNow.sections[sid];
+      const fld = sec && sec.fields.find((x) => x.id === fid);
+      return h('div', { class: 'opt-group' },
+        h('div', { class: 'opt-title' }, sec ? `${sec.title} · ${fld ? fld.label.replace(/^\d+\.\s*/, '') : fid}` : key),
+        h('div', { class: 'chips' }, list.map((o) => h('button', { type: 'button', class: 'removable', 'aria-label': `Quitar ${o}`, onclick: async () => {
+          customOpts[key] = list.filter((x) => x !== o);
+          await saveCustomOpts(); toast(`«${o}» quitada`); renderSettings();
+        } }, o, h('span', { class: 'x' }, '×')))));
+    }) : h('p', null, h('i', null, 'Todavía no has añadido ninguna.')));
+
+  view.replaceChildren(h('h1', { class: 'page-title' }, 'Ajustes'), backupCard, optsCard, pinCard, installCard, aboutCard);
 }
 
 /* =====================================================================
@@ -713,6 +783,7 @@ async function init() {
     return;
   }
   pinConf = (await DB.get('meta', 'pin')) || null;
+  customOpts = (await DB.get('meta', 'customOptions')) || {};
   showLock();
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
   await refreshBackupState();
