@@ -804,9 +804,41 @@ async function init() {
   window.addEventListener('pagehide', flushSave);
   await route();
 
-  if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-    navigator.serviceWorker.register('sw.js').catch((e) => console.warn('SW', e));
-  }
+  setupUpdates();
+}
+
+/* =====================================================================
+   Actualizaciones: cuando se publica una versión nueva, se descarga en segundo
+   plano y aparece un aviso para aplicarla sin tener que cerrar la app.
+   ===================================================================== */
+function setupUpdates() {
+  if (!('serviceWorker' in navigator) || location.protocol === 'file:') return;
+  // En la primera instalación no hay versión anterior: entonces no se avisa
+  let hadController = !!navigator.serviceWorker.controller;
+
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (hadController) showUpdateBar();
+    hadController = true;
+  });
+
+  navigator.serviceWorker.register('sw.js').then((reg) => {
+    // Buscar versión nueva cada vez que se vuelve a la app (iOS la deja en segundo plano)
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') reg.update().catch(() => {});
+    });
+  }).catch((e) => console.warn('SW', e));
+}
+
+function showUpdateBar() {
+  if (document.querySelector('.update-bar')) return;
+  const bar = h('div', { class: 'update-bar', role: 'status' },
+    h('span', null, '✨ Hay una versión nueva'),
+    h('button', { type: 'button', onclick: async () => {
+      bar.querySelector('button').disabled = true;
+      await flushSave(); // lo escrito ya está guardado; esto asegura lo último
+      location.reload();
+    } }, 'Actualizar'));
+  document.body.append(bar);
 }
 
 init();
