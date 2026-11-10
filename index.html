@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Registro diario</title>
+<meta name="description" content="Registro diario personal de ejercicios">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#F6F4EF" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#161714" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Registro">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="styles.css?v=2">
+</head>
+<body>
+<div id="lock" class="lock" hidden>
+  <div class="lock-box">
+    <div class="lock-icon">🔒</div>
+    <h1>Registro diario</h1>
+    <form id="lock-form" autocomplete="off">
+      <input id="lock-input" type="password" inputmode="numeric" pattern="[0-9]*" placeholder="PIN" aria-label="PIN" maxlength="8">
+      <button class="btn primary" type="submit">Desbloquear</button>
+      <p id="lock-error" class="lock-error" role="alert"></p>
+    </form>
+  </div>
+</div>
+
+<div class="app">
+  <main id="view" tabindex="-1"></main>
+</div>
+
+<nav class="tabbar" aria-label="Secciones">
+  <a href="#/hoy" data-tab="hoy"><span class="ti">📝</span><span>Hoy</span></a>
+  <a href="#/historial" data-tab="historial"><span class="ti">📚</span><span>Historial</span></a>
+  <a href="#/ajustes" data-tab="ajustes"><span class="ti">⚙️</span><span>Ajustes</span></a>
+</nav>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<script src="vendor/jspdf.umd.min.js"></script>
+<script src="exercises.js?v=2"></script>
+<script src="pdf.js?v=2"></script>
+<script src="app.js?v=2"></script>
+</body>
+</html>
