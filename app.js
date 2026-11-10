@@ -687,7 +687,23 @@ async function route() {
   else { await renderDay(todayKey()); }
   document.querySelectorAll('.tabbar a').forEach((a) => a.classList.toggle('active', a.dataset.tab === tab));
   window.scrollTo({ top: 0 });
+  if (isTodayView()) jumpToBlockForTime();
 }
+
+/* Al abrir «Hoy», la app se coloca en el bloque que toca según la hora:
+   antes de las 14:00 → Mañana (arriba del todo); desde las 19:00 → Noche. */
+const isTodayView = () => (!location.hash || location.hash === '#/hoy') && current && current.date === todayKey();
+
+function jumpToBlockForTime(hour = new Date().getHours()) {
+  if (!current || current.rec.closed || hour < 19) return;
+  const el = document.querySelector('.block.noche');
+  if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 12 });
+}
+
+// Pulsar «Hoy» estando ya en Hoy también lleva al bloque de la hora
+document.querySelector('.tabbar a[data-tab="hoy"]').addEventListener('click', () => {
+  if (isTodayView()) { window.scrollTo({ top: 0 }); jumpToBlockForTime(); }
+});
 
 async function init() {
   setupLock();
@@ -708,6 +724,10 @@ async function init() {
       if (pinConf && hiddenAt && Date.now() - hiddenAt > 60000) showLock();
       // Si ha cambiado el día mientras la app estaba abierta en «Hoy»
       if ((!location.hash || location.hash === '#/hoy') && current && current.date !== todayKey()) route();
+      // Al volver a la app tras un buen rato (p. ej. desde el recordatorio de la noche)
+      else if (isTodayView() && hiddenAt && Date.now() - hiddenAt > 15 * 60000) {
+        if (new Date().getHours() < 14) window.scrollTo({ top: 0 }); else jumpToBlockForTime();
+      }
     }
   });
   window.addEventListener('pagehide', flushSave);
